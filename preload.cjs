@@ -1,6 +1,7 @@
 const {contextBridge,ipcRenderer}=require("electron");
 contextBridge.exposeInMainWorld("study",{
   getState:()=>ipcRenderer.invoke("state:get"),
+  openPdf:()=>ipcRenderer.invoke("pdf:open"),
   addSubject:data=>ipcRenderer.invoke("subject:add",data),
   deleteSubject:id=>ipcRenderer.invoke("subject:delete",id),
   addTopic:data=>ipcRenderer.invoke("topic:add",data),
