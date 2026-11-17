@@ -1,4 +1,5 @@
-const { app, BrowserWindow, ipcMain, safeStorage, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, safeStorage, shell, dialog } = require("electron");
+const pdfParse = require("pdf-parse");
 const path = require("node:path");
 const fs = require("node:fs");
 const Database = require("better-sqlite3");
@@ -94,6 +95,18 @@ function groqMessages(key, messages, maxTokens=12000) {
 }
 
 ipcMain.handle("state:get",()=>getState());
+ipcMain.handle("pdf:open",async()=>{
+  const result=await dialog.showOpenDialog(mainWindow,{title:"Choose a study PDF",properties:["openFile"],filters:[{name:"PDF documents",extensions:["pdf"]}]});
+  if(result.canceled||!result.filePaths.length)return {canceled:true};
+  const file=result.filePaths[0];
+  const buffer=fs.readFileSync(file);
+  if(buffer.subarray(0,5).toString("ascii")!=="%PDF-")throw new Error("The selected file is not a valid PDF.");
+  const parsed=await pdfParse(buffer);
+  const fullText=String(parsed.text||"").replace(/[\\t ]+\\n/g,"\\n").replace(/\\n{3,}/g,"\\n\\n").trim();
+  if(!fullText)throw new Error("No selectable text was found. This PDF may contain scanned pages; OCR is not available yet.");
+  const limit=32000;
+  return {canceled:false,name:path.basename(file),pages:parsed.numpages||0,text:fullText.slice(0,limit),truncated:fullText.length>limit,totalChars:fullText.length};
+});
 ipcMain.handle("subject:add",(_,data)=>addSubject(data));
 ipcMain.handle("subject:delete",(_,id)=>{database().prepare("DELETE FROM subjects WHERE id=?").run(id);return getState();});
 ipcMain.handle("topic:add",(_,data)=>addTopic(data));
