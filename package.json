@@ -49,13 +49,13 @@
       "target": [
         "AppImage"
       ],
-      "category": "Education",
-      "desktopName": "Study"
+      "category": "Education"
     },
     "mac": {
       "target": [
         "dmg"
       ]
-    }
+    },
+    "desktopName": "Study"
   }
 }
