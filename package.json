@@ -7,8 +7,8 @@
   "license": "UNLICENSED",
   "scripts": {
     "start": "electron .",
-    "build:win": "electron-builder --win nsis",
-    "build:linux": "electron-builder --linux AppImage",
+    "build:win": "electron-builder --win nsis --publish never",
+    "build:linux": "electron-builder --linux AppImage --publish never",
     "build:mac": "electron-builder --mac dmg"
   },
   "dependencies": {
@@ -49,7 +49,8 @@
       "target": [
         "AppImage"
       ],
-      "category": "Education"
+      "category": "Education",
+      "desktopName": "Study"
     },
     "mac": {
       "target": [
