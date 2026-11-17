@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; connect-src 'self'">
+<title>Study</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="ambient"><div class="ambient-grid"></div><div class="ambient-glow"></div><canvas id="stars"></canvas></div>
+<div class="app-shell">
+<aside class="sidebar">
+  <div class="brand"><div class="brand-mark"><svg viewBox="0 0 36 36"><path d="M18 3.5 21.7 14l10.8 4-10.8 4L18 32.5 14.3 22 3.5 18l10.8-4L18 3.5Z" fill="none" stroke="currentColor" stroke-width="1.35"/><circle cx="18" cy="18" r="3" fill="currentColor"/></svg></div><div><div class="brand-name">STUDY</div><div class="brand-sub">EXAM STUDIO</div></div></div>
+  <div class="side-caption">WORKSPACE</div>
+  <nav class="nav">
+    <button class="nav-item active" data-view="overview"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="10" width="8" height="11" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/></svg><span>Overview</span></button>
+    <button class="nav-item" data-view="library"><svg viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v17H6.5A2.5 2.5 0 0 1 4 17.5z"/><path d="M4 17.5A2.5 2.5 0 0 1 6.5 15H20M8 7h8M8 10h6"/></svg><span>My syllabus</span><span class="nav-count" id="subjectCount">0</span></button>
+    <button class="nav-item" data-view="revision"><svg viewBox="0 0 24 24"><path d="M4 19.5V5.8A2.8 2.8 0 0 1 6.8 3H20v17H6.8A2.8 2.8 0 0 1 4 17.2"/><path d="M8 7h8M8 11h8M8 15h5"/></svg><span>Revision room</span></button>
+    <button class="nav-item" data-view="flashcards"><svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="16" rx="2"/><path d="M8 3h11a2 2 0 0 1 2 2v13M9 10h6M9 14h6"/></svg><span>Flashcards</span></button>
+    <button class="nav-item" data-view="exam"><svg viewBox="0 0 24 24"><path d="M7 3h8l4 4v14H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M15 3v5h5M9 13h7M9 17h7"/></svg><span>Exam papers</span></button>
+  </nav>
+  <div class="side-caption side-caption-spaced">PREFERENCES</div>
+  <nav class="nav"><button class="nav-item" data-view="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="m19.4 15 .1.1a1.7 1.7 0 1 1-2.4 2.4l-.1-.1a1.7 1.7 0 0 0-2.9 1.2v.2a1.7 1.7 0 1 1-3.4 0v-.2a1.7 1.7 0 0 0-2.9-1.2l-.1.1a1.7 1.7 0 1 1-2.4-2.4l.1-.1a1.7 1.7 0 0 0-1.2-2.9H4a1.7 1.7 0 1 1 0-3.4h.2a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a1.7 1.7 0 1 1 2.4-2.4l.1.1a1.7 1.7 0 0 0 2.9-1.2V2a1.7 1.7 0 1 1 3.4 0v.2a1.7 1.7 0 0 0 2.9 1.2l.1-.1a1.7 1.7 0 1 1 2.4 2.4l-.1.1a1.7 1.7 0 0 0 1.2 2.9h.2a1.7 1.7 0 1 1 0 3.4h-.2a1.7 1.7 0 0 0-1.2 2.9Z"/></svg><span>Settings</span></button></nav>
+  <div class="sidebar-bottom"><div class="connection"><span class="connection-dot" id="connectionDot"></span><span id="connectionText">AI not configured</span></div><div class="sidebar-foot">LOCAL DATABASE <span>·</span> PRIVATE</div></div>
+</aside>
+<main class="main">
+  <header class="topbar"><div class="crumb"><span>STUDY</span><b>/</b><strong id="pageName">Overview</strong></div><div class="top-actions"><span class="date-label" id="todayLabel"></span><button class="icon-button" id="settingsQuick" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="m19.4 15 .1.1a1.7 1.7 0 1 1-2.4 2.4l-.1-.1a1.7 1.7 0 0 0-2.9 1.2v.2a1.7 1.7 0 1 1-3.4 0v-.2a1.7 1.7 0 0 0-2.9-1.2l-.1.1a1.7 1.7 0 1 1-2.4-2.4l.1-.1a1.7 1.7 0 0 0-1.2-2.9H4a1.7 1.7 0 1 1 0-3.4h.2a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a1.7 1.7 0 1 1 2.4-2.4l.1.1a1.7 1.7 0 0 0 2.9-1.2V2a1.7 1.7 0 1 1 3.4 0v.2a1.7 1.7 0 0 0 2.9 1.2l.1-.1a1.7 1.7 0 1 1 2.4 2.4l-.1.1a1.7 1.7 0 0 0 1.2 2.9h.2a1.7 1.7 0 1 1 0 3.4h-.2a1.7 1.7 0 0 0-1.2 2.9Z"/></svg></button></div></header>
+  <div class="content" id="content"></div>
+</main>
+</div>
+<div class="toast" id="toast"></div>
+<div class="modal-backdrop" id="modalBackdrop"><section class="modal" id="modal"><button class="modal-close" id="modalClose" aria-label="Close"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button><div id="modalContent"></div></section></div>
+<script src="app.js"></script>
+</body>
+</html>
