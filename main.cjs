@@ -83,7 +83,7 @@ function groqMessages(key, messages, maxTokens=12000) {
   return fetch("https://api.groq.com/openai/v1/chat/completions",{
     method:"POST",
     headers:{"Authorization":"Bearer "+key,"Content-Type":"application/json"},
-    body:JSON.stringify({model:"llama-3.3-70b-versatile",messages,temperature:0.35,max_tokens:maxTokens,response_format:{type:"json_object"}})
+    body:JSON.stringify({model:"openai/gpt-oss-120b",messages,temperature:0.35,max_completion_tokens:maxTokens,response_format:{type:"json_object"}})
   }).then(async response=>{
     const body=await response.json();
     if(!response.ok) throw new Error(body.error?.message || "Groq request failed ("+response.status+").");
