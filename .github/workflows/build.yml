@@ -12,24 +12,39 @@ on:
 permissions:
   contents: read
 jobs:
-  desktop:
-    runs-on: ubuntu-latest
+  windows:
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: study-app
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: sudo apt-get update && sudo apt-get install -y wine
-      - run: npm install
-      - run: npm run build:win
-      - run: npm run build:linux
+      - working-directory: study-app
+        run: npm install
+      - working-directory: study-app
+        run: npm run build:win
       - uses: actions/upload-artifact@v4
         with:
           name: Study-Windows
-          path: release/*.exe
+          path: study-app/release/*.exe
           if-no-files-found: error
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: study-app
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - working-directory: study-app
+        run: npm install
+      - working-directory: study-app
+        run: npm run build:linux
       - uses: actions/upload-artifact@v4
         with:
           name: Study-Linux
-          path: release/*.AppImage
+          path: study-app/release/*.AppImage
           if-no-files-found: error
