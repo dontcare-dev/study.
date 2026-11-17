@@ -29,6 +29,9 @@ jobs:
       - name: Install dependencies
         working-directory: D:\study-app
         run: npm install
+      - name: Validate JavaScript
+        working-directory: D:\\study-app
+        run: node --check main.cjs; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; node --check preload.cjs; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; node --check renderer/app.js
       - name: Build Windows installer
         working-directory: D:\study-app
         run: npm run build:win
