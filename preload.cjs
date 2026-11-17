@@ -6,8 +6,11 @@ contextBridge.exposeInMainWorld("study",{
   deleteSubject:id=>ipcRenderer.invoke("subject:delete",id),
   addTopic:data=>ipcRenderer.invoke("topic:add",data),
   deleteTopic:id=>ipcRenderer.invoke("topic:delete",id),
-  saveKey:key=>ipcRenderer.invoke("key:save",key),
+  saveKey:data=>ipcRenderer.invoke("key:save",data),
+  deleteKey:id=>ipcRenderer.invoke("key:delete",id),
   testKey:()=>ipcRenderer.invoke("key:test"),
+  openBackgroundGif:()=>ipcRenderer.invoke("background:open"),
+  clearBackgroundGif:()=>ipcRenderer.invoke("background:clear"),
   generate:request=>ipcRenderer.invoke("ai:generate",request),
   saveSession:data=>ipcRenderer.invoke("session:save",data),
   openExternal:url=>ipcRenderer.invoke("app:openExternal",url)
