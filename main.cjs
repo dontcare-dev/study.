@@ -102,7 +102,7 @@ ipcMain.handle("pdf:open",async()=>{
   const buffer=fs.readFileSync(file);
   if(buffer.subarray(0,5).toString("ascii")!=="%PDF-")throw new Error("The selected file is not a valid PDF.");
   const parsed=await pdfParse(buffer);
-  const fullText=String(parsed.text||"").replace(/[\\t ]+\\n/g,"\\n").replace(/\\n{3,}/g,"\\n\\n").trim();
+  const fullText=String(parsed.text||"").split(/\r?\n/).map(line=>line.replace(/[ \t]+$/,"").trim()).filter(Boolean).join("\n").trim();
   if(!fullText)throw new Error("No selectable text was found. This PDF may contain scanned pages; OCR is not available yet.");
   const limit=32000;
   return {canceled:false,name:path.basename(file),pages:parsed.numpages||0,text:fullText.slice(0,limit),truncated:fullText.length>limit,totalChars:fullText.length};
@@ -117,7 +117,7 @@ ipcMain.handle("ai:generate",async(_,request)=>{
   const key=readKey();if(!key)throw new Error("Add your Groq API key in Settings before generating content.");
   const subject=String(request.subject || "General").slice(0,120);
   const topic=String(request.topic || "Full subject").slice(0,180);
-  const source=String(request.source || "").slice(0,18000);
+  const source=String(request.source || "").slice(0,30000);
   const count=Math.max(1,Math.min(100,Number(request.count)||20));
   const mode=request.mode;
   let prompt="";
