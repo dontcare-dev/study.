@@ -6,6 +6,7 @@ const Database = require("better-sqlite3");
 
 let db;
 let mainWindow;
+let keyCursor=0;
 
 function database() {
   if (db) return db;
@@ -20,23 +21,43 @@ function database() {
     CREATE TABLE IF NOT EXISTS cards (id INTEGER PRIMARY KEY, topic_id INTEGER REFERENCES topics(id) ON DELETE CASCADE, subject_id INTEGER REFERENCES subjects(id) ON DELETE CASCADE, front TEXT NOT NULL, back TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS sessions (id INTEGER PRIMARY KEY, kind TEXT NOT NULL, subject_id INTEGER, score INTEGER NOT NULL DEFAULT 0, total INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS api_keys (id INTEGER PRIMARY KEY, provider TEXT NOT NULL DEFAULT 'groq', label TEXT NOT NULL, value TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
   `);
+  databaseLegacyKeyMigration(db);
   return db;
 }
 
-function readKey() {
-  try {
-    const row = database().prepare("SELECT value FROM settings WHERE key='groq_key'").get();
-    if (!row) return "";
-    const raw = Buffer.from(row.value, "base64");
-    return safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(raw) : raw.toString("utf8");
-  } catch { return ""; }
+function decodeStoredKey(value) {
+  const raw=Buffer.from(value,"base64");
+  return safeStorage.isEncryptionAvailable()?safeStorage.decryptString(raw):raw.toString("utf8");
 }
 
-function saveKey(key) {
-  const raw = safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(key) : Buffer.from(key);
-  database().prepare("INSERT INTO settings(key,value) VALUES('groq_key',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(raw.toString("base64"));
-  return { saved: true, encrypted: safeStorage.isEncryptionAvailable() };
+function databaseLegacyKeyMigration(d) {
+  const legacy=d.prepare("SELECT value FROM settings WHERE key='groq_key'").get();
+  if(legacy){if(!d.prepare("SELECT id FROM api_keys LIMIT 1").get())d.prepare("INSERT INTO api_keys(provider,label,value) VALUES('groq','Imported Groq key',?)").run(legacy.value);d.prepare("DELETE FROM settings WHERE key='groq_key'").run();}
+}
+
+function readKeys() {
+  try{return database().prepare("SELECT id,label,value FROM api_keys WHERE provider='groq' ORDER BY id").all().map(row=>({...row,key:decodeStoredKey(row.value)})).filter(row=>row.key);}catch{return [];}
+}
+
+function readKey(){return readKeys()[0]?.key||"";}
+
+function saveKey(key,label) {
+  const value=String(key||"").trim();if(!value)throw new Error("Enter an API key.");
+  const name=String(label||"").trim().slice(0,60)||"Groq key "+(readKeys().length+1);
+  const raw=safeStorage.isEncryptionAvailable()?safeStorage.encryptString(value):Buffer.from(value);
+  const result=database().prepare("INSERT INTO api_keys(provider,label,value) VALUES('groq',?,?)").run(name,raw.toString("base64"));
+  return {saved:true,id:Number(result.lastInsertRowid),label:name,encrypted:safeStorage.isEncryptionAvailable()};
+}
+
+function deleteKey(id){database().prepare("DELETE FROM api_keys WHERE id=? AND provider='groq'").run(Number(id));return {keys:readKeys().map(({id,label})=>({id,label}))};}
+
+function applyBackgroundGif(data){
+  if(data===null){database().prepare("DELETE FROM settings WHERE key='background_gif'").run();return {backgroundGif:null};}
+  const match=String(data||"").match(/^data:image\/gif;base64,([A-Za-z0-9+/=]+)$/);if(!match)throw new Error("Choose a valid GIF image.");
+  if(Buffer.from(match[1],"base64").length>15*1024*1024)throw new Error("GIF must be 15 MB or smaller.");
+  database().prepare("INSERT INTO settings(key,value) VALUES('background_gif',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(data);return {backgroundGif:data};
 }
 
 function getState() {
@@ -47,7 +68,9 @@ function getState() {
     questions: d.prepare("SELECT * FROM questions ORDER BY created_at DESC LIMIT 500").all().map(q=>({...q,options:JSON.parse(q.options)})),
     cards: d.prepare("SELECT * FROM cards ORDER BY created_at DESC LIMIT 500").all(),
     sessions: d.prepare("SELECT * FROM sessions ORDER BY created_at DESC LIMIT 20").all(),
-    keyConfigured: Boolean(readKey())
+    keyConfigured: readKeys().length>0,
+    apiKeys: readKeys().map(({id,label})=>({id,label})),
+    backgroundGif: d.prepare("SELECT value FROM settings WHERE key='background_gif'").get()?.value || null
   };
 }
 
@@ -111,10 +134,13 @@ ipcMain.handle("subject:add",(_,data)=>addSubject(data));
 ipcMain.handle("subject:delete",(_,id)=>{database().prepare("DELETE FROM subjects WHERE id=?").run(id);return getState();});
 ipcMain.handle("topic:add",(_,data)=>addTopic(data));
 ipcMain.handle("topic:delete",(_,id)=>{database().prepare("DELETE FROM topics WHERE id=?").run(id);return getState();});
-ipcMain.handle("key:save",(_,key)=>saveKey(String(key || "").trim()));
-ipcMain.handle("key:test",async()=>{const key=readKey();if(!key)throw new Error("Add your Groq API key first.");await groqMessages(key,[{role:"user",content:'Return JSON only: {"status":"connected"}'}],80);return {connected:true};});
+ipcMain.handle("key:save",(_,data)=>saveKey(data.key,data.label));
+ipcMain.handle("key:delete",(_,id)=>deleteKey(id));
+ipcMain.handle("key:test",async()=>{const keys=readKeys();if(!keys.length)throw new Error("Add your Groq API key first.");let last;for(const item of keys){try{await groqMessages(item.key,[{role:"user",content:'Return JSON only: {"status":"connected"}'}],80);return {connected:true,label:item.label};}catch(e){last=e;}}throw last||new Error("No API key could connect.");});
+ipcMain.handle("background:open",async()=>{const result=await dialog.showOpenDialog(mainWindow,{title:"Choose an animated GIF",properties:["openFile"],filters:[{name:"GIF images",extensions:["gif"]}]});if(result.canceled||!result.filePaths.length)return {canceled:true};const buffer=fs.readFileSync(result.filePaths[0]);const sig=buffer.subarray(0,6).toString("ascii");if(sig!=="GIF87a"&&sig!=="GIF89a")throw new Error("The selected file is not a valid GIF.");if(buffer.length>15*1024*1024)throw new Error("GIF must be 15 MB or smaller.");return applyBackgroundGif("data:image/gif;base64,"+buffer.toString("base64"));});
+ipcMain.handle("background:clear",()=>applyBackgroundGif(null));
 ipcMain.handle("ai:generate",async(_,request)=>{
-  const key=readKey();if(!key)throw new Error("Add your Groq API key in Settings before generating content.");
+  const keys=readKeys();if(!keys.length)throw new Error("Add a Groq API key in Settings before generating content.");
   const subject=String(request.subject || "General").slice(0,120);
   const topic=String(request.topic || "Full subject").slice(0,180);
   const source=String(request.source || "").slice(0,30000);
@@ -125,7 +151,10 @@ ipcMain.handle("ai:generate",async(_,request)=>{
   if(mode==="cards") prompt=`Create exactly ${count} high-value active-recall flashcards for subject: ${subject}; topic: ${topic}. Cover definitions, mechanisms, distinctions, causes, consequences, formulae and common traps where relevant. Return JSON: {"items":[{"front":"one focused question","back":"concise accurate answer"}]}. Source material: ${source || "Use standard curriculum knowledge."}`;
   if(mode==="paper") prompt=`Build a rigorous full examination paper with exactly 100 questions for subject: ${subject}; topic/syllabus: ${topic}. Make it difficult but fair, varied and curriculum-relevant. Mix MCQ, true/false, short answer and long/application questions. Include marks for every question, clear instructions, and a complete answer key with explanations or marking points. Return valid JSON: {"title":"...","duration_minutes":180,"total_marks":100,"instructions":["..."],"sections":[{"title":"...","questions":[{"type":"mcq","question":"...","options":["A...","B...","C...","D..."],"answer":"...","explanation":"...","marks":1},{"type":"short","question":"...","answer":"...","marking_points":["..."],"marks":3},{"type":"long","question":"...","answer":"...","marking_points":["..."],"marks":5},{"type":"true_false","question":"...","answer":"True","explanation":"...","marks":1}]}]}. Exactly 100 questions total across sections. Source material: ${source || "Use standard curriculum knowledge."}`;
   if(mode==="revision") prompt=`Create a complete but efficient revision guide for subject: ${subject}; topic: ${topic}. Focus on exam-relevant facts, explanations, processes, formulae, comparisons, common misconceptions and likely question angles. Return JSON: {"title":"...","overview":"...","sections":[{"heading":"...","content":"...","key_points":["..."],"exam_traps":["..."]}],"quick_recall":["..."]}. Source material: ${source || "Use standard curriculum knowledge."}`;
-  const result=await groqMessages(key,[{role:"system",content:"You are a precise senior examiner and expert teacher. Never invent syllabus-specific facts. Follow the requested JSON schema exactly. Do not include markdown fences."},{role:"user",content:prompt}],mode==="paper"?16000:10000);
+  const messages=[{role:"system",content:"You are a precise senior examiner and expert teacher. Never invent syllabus-specific facts. Follow the requested JSON schema exactly. Do not include markdown fences."},{role:"user",content:prompt}];
+  let result,lastError;const ordered=keys.slice(keyCursor).concat(keys.slice(0,keyCursor));
+  for(const item of ordered){try{result=await groqMessages(item.key,messages,mode==="paper"?16000:10000);keyCursor=(keys.findIndex(k=>k.id===item.id)+1)%keys.length;break;}catch(error){lastError=error;}}
+  if(!result)throw lastError||new Error("All Groq API keys failed.");
   if((mode==="questions"||mode==="cards")&&Array.isArray(result.items)) saveGenerated({kind:mode==="questions"?"questions":"cards",subjectId:request.subjectId,topicId:request.topicId,items:result.items});
   return result;
 });
