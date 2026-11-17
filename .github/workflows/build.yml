@@ -45,6 +45,8 @@ jobs:
         with:
           node-version: 22
       - run: npm install
+      - name: Validate JavaScript
+        run: node --check main.cjs && node --check preload.cjs && node --check renderer/app.js
       - run: npm run build:linux
       - uses: actions/upload-artifact@v4
         with:
