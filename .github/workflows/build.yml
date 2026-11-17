@@ -15,22 +15,27 @@ jobs:
   windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          path: study-app
+      - name: Clone repository into a Windows-safe path
+        shell: pwsh
+        working-directory: D:\
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          $auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("x-access-token:$env:GITHUB_TOKEN"))
+          git -c "http.extraheader=AUTHORIZATION: basic $auth" clone --depth 1 https://github.com/dontcare-dev/study. D:\study-app
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - name: Install dependencies
-        working-directory: study-app
+        working-directory: D:\study-app
         run: npm install
       - name: Build Windows installer
-        working-directory: study-app
+        working-directory: D:\study-app
         run: npm run build:win
       - uses: actions/upload-artifact@v4
         with:
           name: Study-Windows
-          path: study-app/release/*.exe
+          path: D:\study-app\release\*.exe
           if-no-files-found: error
   linux:
     runs-on: ubuntu-24.04
