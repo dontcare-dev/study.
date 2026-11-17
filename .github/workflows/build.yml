@@ -13,24 +13,24 @@ permissions:
   contents: read
 jobs:
   windows:
-    runs-on: ubuntu-24.04
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: study-app
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Install Windows packaging dependencies
-        run: |
-          sudo dpkg --add-architecture i386
-          sudo apt-get update
-          sudo apt-get install -y wine wine32 xvfb
-      - run: npm install
+      - name: Install dependencies
+        working-directory: study-app
+        run: npm install
       - name: Build Windows installer
-        run: xvfb-run -a npm run build:win
+        working-directory: study-app
+        run: npm run build:win
       - uses: actions/upload-artifact@v4
         with:
           name: Study-Windows
-          path: release/*.exe
+          path: study-app/release/*.exe
           if-no-files-found: error
   linux:
     runs-on: ubuntu-24.04
