@@ -16,28 +16,35 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: source
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - run: npm install
+        working-directory: source
       - run: npm run build:win
+        working-directory: source
       - uses: actions/upload-artifact@v4
         with:
           name: Study-Windows
-          path: release/*.exe
+          path: source/release/*.exe
           if-no-files-found: error
   linux:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: source
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
       - run: npm install
+        working-directory: source
       - run: npm run build:linux
+        working-directory: source
       - uses: actions/upload-artifact@v4
         with:
           name: Study-Linux
-          path: release/*.AppImage
+          path: source/release/*.AppImage
           if-no-files-found: error
