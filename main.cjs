@@ -111,7 +111,7 @@ function parseAiJson(content){
 async function geminiGenerate(key,messages,maxTokens=16000){
   const system=messages.find(m=>m.role==="system")?.content||"";
   const prompt=messages.filter(m=>m.role!=="system").map(m=>m.content).join("\n\n");
-  const response=await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key="+encodeURIComponent(key),{
+  const response=await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key="+encodeURIComponent(key),{
     method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({systemInstruction:{parts:[{text:system}]},contents:[{role:"user",parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json",maxOutputTokens:maxTokens,temperature:0.35}})
   });
