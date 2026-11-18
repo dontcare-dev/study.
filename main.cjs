@@ -103,6 +103,23 @@ function saveGenerated({kind,subjectId,topicId,items}) {
   return {saved:items.length};
 }
 
+function parseAiJson(content){
+  if(!content)throw new Error("The model returned an empty response.");
+  try{return JSON.parse(content);}catch{const match=content.match(/\{[\s\S]*\}/);if(match)return JSON.parse(match[0]);throw new Error("The model response was not valid JSON.");}
+}
+
+async function geminiGenerate(key,messages,maxTokens=16000){
+  const system=messages.find(m=>m.role==="system")?.content||"";
+  const prompt=messages.filter(m=>m.role!=="system").map(m=>m.content).join("\n\n");
+  const response=await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key="+encodeURIComponent(key),{
+    method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({systemInstruction:{parts:[{text:system}]},contents:[{role:"user",parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json",maxOutputTokens:maxTokens,temperature:0.35}})
+  });
+  const body=await response.json();
+  if(!response.ok)throw new Error(body.error?.message||"Gemini request failed ("+response.status+").");
+  return parseAiJson(body.candidates?.[0]?.content?.parts?.map(p=>p.text||"").join(""));
+}
+
 function groqMessages(key, messages, maxTokens=12000) {
   return fetch("https://api.groq.com/openai/v1/chat/completions",{
     method:"POST",
@@ -113,7 +130,7 @@ function groqMessages(key, messages, maxTokens=12000) {
     if(!response.ok) throw new Error(body.error?.message || "Groq request failed ("+response.status+").");
     const content=body.choices?.[0]?.message?.content;
     if(!content) throw new Error("The model returned an empty response.");
-    try{return JSON.parse(content);}catch{const match=content.match(/\{[\s\S]*\}/);if(match)return JSON.parse(match[0]);throw new Error("The model response was not valid JSON.");}
+    return parseAiJson(content);
   });
 }
 
@@ -125,25 +142,26 @@ ipcMain.handle("pdf:open",async()=>{
   const buffer=fs.readFileSync(file);
   if(buffer.subarray(0,5).toString("ascii")!=="%PDF-")throw new Error("The selected file is not a valid PDF.");
   const parsed=await pdfParse(buffer);
-  const fullText=String(parsed.text||"").split(/\r?\n/).map(line=>line.replace(/[ \t]+$/,"").trim()).filter(Boolean).join("\n").trim();
+  const fullText=String(parsed.text||"").replace(/\r\n?/g,"\n").trim();
   if(!fullText)throw new Error("No selectable text was found. This PDF may contain scanned pages; OCR is not available yet.");
-  const limit=32000;
-  return {canceled:false,name:path.basename(file),pages:parsed.numpages||0,text:fullText.slice(0,limit),truncated:fullText.length>limit,totalChars:fullText.length};
+  return {canceled:false,name:path.basename(file),pages:parsed.numpages||0,text:fullText,truncated:false,totalChars:fullText.length};
 });
 ipcMain.handle("subject:add",(_,data)=>addSubject(data));
 ipcMain.handle("subject:delete",(_,id)=>{database().prepare("DELETE FROM subjects WHERE id=?").run(id);return getState();});
 ipcMain.handle("topic:add",(_,data)=>addTopic(data));
 ipcMain.handle("topic:delete",(_,id)=>{database().prepare("DELETE FROM topics WHERE id=?").run(id);return getState();});
-ipcMain.handle("key:save",(_,data)=>saveKey(data.key,data.label));
-ipcMain.handle("key:delete",(_,id)=>deleteKey(id));
-ipcMain.handle("key:test",async()=>{const keys=readKeys();if(!keys.length)throw new Error("Add your Groq API key first.");let last;for(const item of keys){try{await groqMessages(item.key,[{role:"user",content:'Return JSON only: {"status":"connected"}'}],80);return {connected:true,label:item.label};}catch(e){last=e;}}throw last||new Error("No API key could connect.");});
+ipcMain.handle("key:save",(_,data)=>saveKey(data.provider,data.key,data.label));
+ipcMain.handle("key:delete",(_,data)=>deleteKey(data.provider,data.id));
+ipcMain.handle("provider:set",(_,provider)=>{if(!["groq","gemini"].includes(provider))throw new Error("Unsupported AI provider.");database().prepare("INSERT INTO settings(key,value) VALUES('active_provider',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(provider);return {activeProvider:provider};});
+ipcMain.handle("key:test",async()=>{let last;for(const provider of ["gemini","groq"]){for(const item of readKeys(provider)){try{const messages=[{role:"system",content:"Return valid JSON only."},{role:"user",content:'Return {"status":"connected"}'}];if(provider==="gemini")await geminiGenerate(item.key,messages,80);else await groqMessages(item.key,messages,80);return {connected:true,label:item.label,provider};}catch(e){last=e;}}}throw last||new Error("Add a Gemini or Groq API key first.");});
 ipcMain.handle("background:open",async()=>{const result=await dialog.showOpenDialog(mainWindow,{title:"Choose an animated GIF",properties:["openFile"],filters:[{name:"GIF images",extensions:["gif"]}]});if(result.canceled||!result.filePaths.length)return {canceled:true};const buffer=fs.readFileSync(result.filePaths[0]);const sig=buffer.subarray(0,6).toString("ascii");if(sig!=="GIF87a"&&sig!=="GIF89a")throw new Error("The selected file is not a valid GIF.");if(buffer.length>15*1024*1024)throw new Error("GIF must be 15 MB or smaller.");return applyBackgroundGif("data:image/gif;base64,"+buffer.toString("base64"));});
 ipcMain.handle("background:clear",()=>applyBackgroundGif(null));
 ipcMain.handle("ai:generate",async(_,request)=>{
-  const keys=readKeys();if(!keys.length)throw new Error("Add a Groq API key in Settings before generating content.");
+  const provider=database().prepare("SELECT value FROM settings WHERE key='active_provider'").get()?.value || "gemini";
+  const keys=readKeys(provider);if(!keys.length)throw new Error("Add a "+(provider==="gemini"?"Gemini":"Groq")+" API key in Settings, or switch providers.");
   const subject=String(request.subject || "General").slice(0,120);
   const topic=String(request.topic || "Full subject").slice(0,180);
-  const source=String(request.source || "").slice(0,30000);
+  const source=String(request.source || "");
   const count=Math.max(1,Math.min(100,Number(request.count)||20));
   const mode=request.mode;
   let prompt="";
@@ -152,8 +170,8 @@ ipcMain.handle("ai:generate",async(_,request)=>{
   if(mode==="paper") prompt=`Build a rigorous full examination paper with exactly 100 questions for subject: ${subject}; topic/syllabus: ${topic}. Make it difficult but fair, varied and curriculum-relevant. Mix MCQ, true/false, short answer and long/application questions. Include marks for every question, clear instructions, and a complete answer key with explanations or marking points. Return valid JSON: {"title":"...","duration_minutes":180,"total_marks":100,"instructions":["..."],"sections":[{"title":"...","questions":[{"type":"mcq","question":"...","options":["A...","B...","C...","D..."],"answer":"...","explanation":"...","marks":1},{"type":"short","question":"...","answer":"...","marking_points":["..."],"marks":3},{"type":"long","question":"...","answer":"...","marking_points":["..."],"marks":5},{"type":"true_false","question":"...","answer":"True","explanation":"...","marks":1}]}]}. Exactly 100 questions total across sections. Source material: ${source || "Use standard curriculum knowledge."}`;
   if(mode==="revision") prompt=`Create a complete but efficient revision guide for subject: ${subject}; topic: ${topic}. Focus on exam-relevant facts, explanations, processes, formulae, comparisons, common misconceptions and likely question angles. Return JSON: {"title":"...","overview":"...","sections":[{"heading":"...","content":"...","key_points":["..."],"exam_traps":["..."]}],"quick_recall":["..."]}. Source material: ${source || "Use standard curriculum knowledge."}`;
   const messages=[{role:"system",content:"You are a precise senior examiner and expert teacher. Never invent syllabus-specific facts. Follow the requested JSON schema exactly. Do not include markdown fences."},{role:"user",content:prompt}];
-  let result,lastError;const ordered=keys.slice(keyCursor).concat(keys.slice(0,keyCursor));
-  for(const item of ordered){try{result=await groqMessages(item.key,messages,mode==="paper"?16000:10000);keyCursor=(keys.findIndex(k=>k.id===item.id)+1)%keys.length;break;}catch(error){lastError=error;}}
+  let result,lastError;const cursor=keyCursor[provider]||0;const ordered=keys.slice(cursor).concat(keys.slice(0,cursor));
+  for(const item of ordered){try{result=provider==="gemini"?await geminiGenerate(item.key,messages,mode==="paper"?24000:16000):await groqMessages(item.key,messages,mode==="paper"?16000:10000);keyCursor[provider]=(keys.findIndex(k=>k.id===item.id)+1)%keys.length;break;}catch(error){lastError=error;}}
   if(!result)throw lastError||new Error("All Groq API keys failed.");
   if((mode==="questions"||mode==="cards")&&Array.isArray(result.items)) saveGenerated({kind:mode==="questions"?"questions":"cards",subjectId:request.subjectId,topicId:request.topicId,items:result.items});
   return result;
