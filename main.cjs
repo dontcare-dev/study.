@@ -6,7 +6,7 @@ const Database = require("better-sqlite3");
 
 let db;
 let mainWindow;
-let keyCursor=0;
+let keyCursor={groq:0,gemini:0};
 
 function database() {
   if (db) return db;
@@ -37,21 +37,20 @@ function databaseLegacyKeyMigration(d) {
   if(legacy){if(!d.prepare("SELECT id FROM api_keys LIMIT 1").get())d.prepare("INSERT INTO api_keys(provider,label,value) VALUES('groq','Imported Groq key',?)").run(legacy.value);d.prepare("DELETE FROM settings WHERE key='groq_key'").run();}
 }
 
-function readKeys() {
-  try{return database().prepare("SELECT id,label,value FROM api_keys WHERE provider='groq' ORDER BY id").all().map(row=>({...row,key:decodeStoredKey(row.value)})).filter(row=>row.key);}catch{return [];}
+function readKeys(provider="groq") {
+  try{return database().prepare("SELECT id,label,value FROM api_keys WHERE provider=? ORDER BY id").all(provider).map(row=>({...row,key:decodeStoredKey(row.value)})).filter(row=>row.key);}catch{return [];}
 }
 
-function readKey(){return readKeys()[0]?.key||"";}
-
-function saveKey(key,label) {
+function saveKey(provider,key,label) {
+  if(!["groq","gemini"].includes(provider))throw new Error("Choose a supported AI provider.");
   const value=String(key||"").trim();if(!value)throw new Error("Enter an API key.");
-  const name=String(label||"").trim().slice(0,60)||"Groq key "+(readKeys().length+1);
+  const name=String(label||"").trim().slice(0,60)||provider.toUpperCase()+" key "+(readKeys(provider).length+1);
   const raw=safeStorage.isEncryptionAvailable()?safeStorage.encryptString(value):Buffer.from(value);
-  const result=database().prepare("INSERT INTO api_keys(provider,label,value) VALUES('groq',?,?)").run(name,raw.toString("base64"));
-  return {saved:true,id:Number(result.lastInsertRowid),label:name,encrypted:safeStorage.isEncryptionAvailable()};
+  const result=database().prepare("INSERT INTO api_keys(provider,label,value) VALUES(?,?,?)").run(provider,name,raw.toString("base64"));
+  return {saved:true,id:Number(result.lastInsertRowid),label:name,provider,encrypted:safeStorage.isEncryptionAvailable()};
 }
 
-function deleteKey(id){database().prepare("DELETE FROM api_keys WHERE id=? AND provider='groq'").run(Number(id));return {keys:readKeys().map(({id,label})=>({id,label}))};}
+function deleteKey(provider,id){database().prepare("DELETE FROM api_keys WHERE id=? AND provider=?").run(Number(id),provider);return {keys:readKeys(provider).map(({id,label})=>({id,label,provider}))};}
 
 function applyBackgroundGif(data){
   if(data===null){database().prepare("DELETE FROM settings WHERE key='background_gif'").run();return {backgroundGif:null};}
@@ -68,8 +67,9 @@ function getState() {
     questions: d.prepare("SELECT * FROM questions ORDER BY created_at DESC LIMIT 500").all().map(q=>({...q,options:JSON.parse(q.options)})),
     cards: d.prepare("SELECT * FROM cards ORDER BY created_at DESC LIMIT 500").all(),
     sessions: d.prepare("SELECT * FROM sessions ORDER BY created_at DESC LIMIT 20").all(),
-    keyConfigured: readKeys().length>0,
-    apiKeys: readKeys().map(({id,label})=>({id,label})),
+    keyConfigured: readKeys("groq").length+readKeys("gemini").length>0,
+    apiKeys: ["groq","gemini"].flatMap(provider=>readKeys(provider).map(({id,label})=>({id,label,provider}))),
+    activeProvider: d.prepare("SELECT value FROM settings WHERE key='active_provider'").get()?.value || "gemini",
     backgroundGif: d.prepare("SELECT value FROM settings WHERE key='background_gif'").get()?.value || null
   };
 }
